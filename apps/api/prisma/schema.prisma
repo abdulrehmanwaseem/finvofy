@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String    @id @default(cuid())
+  name      String
+  domain    String?   @unique
+  settings  Json?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  users     User[]
+  customers Customer[]
+  invoices  Invoice[]
+  payments  Payment[]
+  templates Template[]
+
+  @@index([domain])
+}
+
+model User {
+  id           String    @id @default(cuid())
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId     String
+  email        String    @unique
+  name         String?
+  passwordHash String?
+  role         Role      @default(MEMBER)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions     Session[]
+
+  @@index([tenantId])
+  @@index([email])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  refreshToken String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([refreshToken])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+  BILLING
+}
+
+model Customer {
+  id        String    @id @default(cuid())
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId  String
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  metadata  Json?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  invoices  Invoice[]
+
+  @@index([tenantId])
+  @@index([email])
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId       String
+  customer       Customer      @relation(fields: [customerId], references: [id])
+  customerId     String
+  number         String
+  publicId       String        @unique @default(cuid())
+  status         InvoiceStatus @default(DRAFT)
+  currency       String        @default("USD")
+  items          Json
+  subtotal       Float
+  tax            Float
+  total          Float
+  dueDate        DateTime?
+  issuedAt       DateTime      @default(now())
+  paidAt         DateTime?
+  pdfUrl         String?
+  metadata       Json?
+  remindersSent  Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  payments       Payment[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId])
+  @@index([customerId])
+  @@index([status])
+  @@index([publicId])
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  tenant            Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+  invoice           Invoice       @relation(fields: [invoiceId], references: [id])
+  invoiceId         String
+  provider          String
+  providerPaymentId String?
+  amount            Float
+  currency          String
+  status            PaymentStatus @default(PENDING)
+  method            String?
+  paidAt            DateTime?
+  metadata          Json?
+  createdAt         DateTime      @default(now())
+
+  @@index([tenantId])
+  @@index([invoiceId])
+  @@index([status])
+  @@index([providerPaymentId])
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+model Template {
+  id        String   @id @default(cuid())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId  String
+  name      String
+  html      String   @db.Text
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
